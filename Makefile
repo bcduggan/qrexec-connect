@@ -1,5 +1,3 @@
-.PHONY: install-client install-server install
-
 QUBES_RPC_DIR = /etc/qubes-rpc
 EXECUTABLE_DIR = /opt/bin
 SD_UNIT_DIR = /etc/systemd/user
