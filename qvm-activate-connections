@@ -1,0 +1,91 @@
+#!/usr/bin/python
+
+from sys import argv
+from logging import getLogger, INFO, DEBUG
+from argparse import ArgumentParser
+from os.path import basename
+from socket import socket, AF_INET, AF_INET6, AF_UNIX
+from systemd.journal import JournalHandler
+from systemd.daemon import listen_fds_with_names
+from qrexec.client import call_async as qrexec_call_async
+from asyncio import gather, run
+
+
+program_name = basename(argv[0])
+
+argument_parser = ArgumentParser(
+    description='Start client qrexec connection services with systemd socket activation'
+)
+
+argument_parser.add_argument('rpc_name')
+argument_parser.add_argument('-a', '--rpc-arg')
+argument_parser.add_argument('-d', '--debug', action='store_true')
+program_args = argument_parser.parse_args()
+
+logger = getLogger(program_name)
+logger.addHandler(JournalHandler(SYSLOG_IDENTIFIER=program_name))
+logger.setLevel(DEBUG) if program_args.debug else logger.setLevel(INFO)
+
+
+async def main():
+    fds_and_names = listen_fds_with_names()
+
+    if not len(fds_and_names):
+        print(f'Use {program_name} in a systemd socket-activated service unit file or with systemd-socket-activate.')
+        exit(0)
+
+    logger.info('Starting connection servers')
+
+    connection_servers = (
+        serve_connection(fd, fd_name, program_args.rpc_name, program_args.rpc_arg)
+        for fd, fd_name in fds_and_names.items()
+    )
+
+    await gather(*connection_servers)
+
+
+async def serve_connection(fd, target_qube, rpc_name, rpc_arg):
+    async def handle_connection(reader, writer):
+        await qrexec_handle_connection(target_qube, rpc_name, reader, writer, arg=rpc_arg)
+
+    # Duplicate socket that systemd owns:
+    sock = socket(fileno=fd).dup()
+
+    logger.info(f"{sock.getsockname()} '{target_qube}' {rpc_name}+{rpc_arg}")
+
+    # start_server and start_unix_server take ownership of the socket passed
+    # to them, which the Server object will close when it closes:
+    # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.create_server
+    if sock.family in (AF_INET, AF_INET6):
+        from asyncio import start_server
+        server = await start_server(handle_connection, sock=sock)
+    elif sock.family == AF_UNIX:
+        from asyncio import start_unix_server
+        server = await start_unix_server(handle_connection, sock=sock)
+    else:
+        logger.error(f'Unsupported address family: {program_args.family}')
+        exit(1)
+
+    async with server:
+        await server.serve_forever() 
+
+
+async def qrexec_handle_connection(target, name, reader, writer, arg=None):
+    logger.debug(f'qrexec_handle_conection: target: {target}, name: {name}, arg: {arg}')
+
+    while not reader.at_eof():
+        data = await reader.read(255)
+
+        if data:
+            response = await qrexec_call_async(target, name, arg=arg, input=data)
+            writer.write(bytes(response, 'utf-8'))
+            await writer.drain()
+        else:
+            reader.feed_eof()
+
+    writer.close()
+    await writer.wait_closed()
+
+
+if __name__ == "__main__":
+    run(main())
