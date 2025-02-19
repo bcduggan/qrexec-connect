@@ -1,0 +1,5 @@
+[Unit]
+Description="Connect through qubes.ConnectTCP"
+
+[Install]
+WantedBy=sockets.target

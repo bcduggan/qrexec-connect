@@ -1,0 +1,5 @@
+[Unit]
+Description=Connect through qubes.ConnectUnix
+
+[Service]
+ExecStart=/opt/bin/qrexec-systemd-socket-activate --rpc-arg='%i' qubes.ConnectUnix
