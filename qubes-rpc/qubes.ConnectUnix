@@ -1,0 +1,11 @@
+#!/usr/bin/sh
+
+set -euf
+
+ID="qubes.ConnectUnix+${QREXEC_SERVICE_ARGUMENT}"
+
+systemd-cat --identifier="${ID}" echo "Connection from ${QREXEC_REMOTE_DOMAIN}"
+
+exec system-cat --identifier="${ID}" \
+  socat -d -d -d FD:3 ABSTRACT-CONNECT:"${QREXEC_SERVICE_ARGUMENT}" \
+  3<&0 1>&3
