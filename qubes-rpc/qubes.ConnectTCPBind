@@ -9,8 +9,4 @@ BIND_ADDRESS="${QREXEC_SERVICE_ARGUMENT##*-}"
 
 systemd-cat --identifier="${ID}" echo "Connection from ${QREXEC_REMOTE_DOMAIN}"
 
-exec system-cat --identifier="${ID}" \
-  socat -d -d -d \
-    FD:3 \
-    TCP:127.0.0.1:"${DESTINATION_PORT}",bind="${BIND_ADDRESS}" \
-  3<&0 1>&3
+socat STDIO TCP:127.0.0.1:"${DESTINATION_PORT}",bind="${BIND_ADDRESS}"
