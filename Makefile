@@ -11,7 +11,7 @@ install-server:	install-qubes-rpcs
 install-client: install-qrexec-systemd-socket-activate install-sd-units
 
 install-qubes-rpcs: qubes-rpc/.
-	cp --preserve=mode $(QUBES_RPC_DIR)/* /etc/qubes-rpc/
+	cp --preserve=mode qubes-rpc/* /etc/qubes-rpc/
 
 /opt/bin:
 	mkdir --parents $(@D)
