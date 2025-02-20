@@ -13,7 +13,7 @@ install-client: install-qrexec-systemd-socket-activate install-sd-units
 install-qubes-rpcs: qubes-rpc/.
 	cp --preserve=mode qubes-rpc/* /etc/qubes-rpc/
 
-/opt/bin:
+/opt/bin/.:
 	mkdir --parents $(@D)
 	
 install-qrexec-systemd-socket-activate: qrexec-systemd-socket-activate | /opt/bin/.
