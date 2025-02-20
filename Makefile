@@ -1,33 +1,23 @@
-QUBES_RPC_DIR = qubes-rpc
-EXECUTABLE_DIR = bin
-SD_UNIT_DIR = systemd-user
-EXAMPLE_DIR = sysemd-user-drop-in-examples
-
-TARGET_QUBES_RPC_DIR = /etc/qubes-rpc
-TARGET_EXECUTABLE_DIR = /opt/bin
-TARGET_SD_UNIT_DIR = /etc/systemd/user
-
 default:
 
-.PHONY: install \
+.PHONY: install-server \
+	install-client \
 	install-rpcs \
-	install-executables \
-	install-sd-units \
+	install-qrexec-systemd-socket-activate \
+	install-sd-units
 
-install: install-qubes-rpcs install-executables install-sd-units
+install-server:	install-qubes-rpcs
 
-install-qubes-rpcs: $(addprefix $(TARGET_QUBES_RPC_DIR)/,$(notdir $(wildcard $(QUBES_RPC_DIR)/*)))
-install-executables: $(addprefix $(TARGET_EXECUTABLE_DIR)/,$(notdir $(wildcard $(EXECUTABLE_DIR)/*)))
-install-sd-units: $(addprefix $(TARGET_SD_UNIT_DIR)/,$(notdir $(wildcard $(SD_UNIT_DIR)/*)))
+install-client: install-qrexec-systemd-socket-activate install-sd-units
 
-$(TARGET_QUBES_RPC_DIR)/%: $(QUBES_RPC_DIR)/*
-	install --compare --mode=0755 $(QUBES_RPC_DIR)/$(@F) $(@D)
+install-qubes-rpcs: qubes-rpc/.
+	cp --preserve=mode $(QUBES_RPC_DIR)/* /etc/qubes-rpc/
 
-$(TARGET_EXECUTABLE_DIR)/.:
+/opt/bin:
 	mkdir --parents $(@D)
 	
-$(TARGET_EXECUTABLE_DIR)/%: $(EXECUTABLE_DIR)/* | $(TARGET_EXECUTABLE_DIR)/.
-	install --compare --mode=0755 $(EXECUTABLE_DIR)/$(@F) $(@D)
+install-qrexec-systemd-socket-activate: qrexec-systemd-socket-activate | /opt/bin/.
+	cp --preserve=mode qrexec-systemd-socket-activate /opt/bin/
 
-$(TARGET_SD_UNIT_DIR)/%: $(SD_UNIT_DIR)/*
-	install --compare --mode=0644 $(SD_UNIT_DIR)/$(@F) $(@D)
+install-sd-units: systemd-user/.
+	cp --preserve=mode systemd-user/* /etc/systemd/user/
