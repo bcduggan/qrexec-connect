@@ -3,12 +3,12 @@ default:
 .PHONY: install-server \
 	install-client \
 	install-rpcs \
-	install-qrexec-systemd-socket-activate \
+	install-qrexec-connect \
 	install-sd-units
 
 install-server:	install-qubes-rpcs
 
-install-client: install-qrexec-systemd-socket-activate install-sd-units
+install-client: install-qrexec-connect install-sd-units
 
 install-qubes-rpcs: qubes-rpc/.
 	cp --preserve=mode qubes-rpc/* /etc/qubes-rpc/
@@ -16,8 +16,8 @@ install-qubes-rpcs: qubes-rpc/.
 /opt/bin/.:
 	mkdir --parents $(@D)
 	
-install-qrexec-systemd-socket-activate: qrexec-systemd-socket-activate | /opt/bin/.
-	cp --preserve=mode qrexec-systemd-socket-activate /opt/bin/
+install-qrexec-connect: qrexec-connect | /opt/bin/.
+	cp --preserve=mode qrexec-connect /opt/bin/
 
 install-sd-units: systemd-user/.
 	cp --preserve=mode systemd-user/* /etc/systemd/user/
