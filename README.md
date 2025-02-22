@@ -2,9 +2,9 @@
 
 _It's like qrexec-client-vm, but systemd-socket-activated._
 
-qrexec-connect is a systemd-native service for qrexec network connections.
-Enable a new qrexec connection with a single systemd socket unit file. Manage
-and monitor connection services on client qubes with `systemctl`.
+qrexec-connect is a systemd-native service for network connections. Enable a
+new qrexec connection with a single systemd socket unit file. Manage and
+monitor connection services on client qubes with `systemctl`.
 
 For example, to forward TCP connections to 127.0.0.1:1234 on a client qube
 to the same port on the @default service qube (as defined in Qubes policy),
@@ -45,7 +45,42 @@ qubes client and service qubes. `qrexec-connect` runs as a single,
 socket-activated systemd service for all port bindings, avoiding service
 instance proliferation. It accepts new connections by itself so users can apply
 multiple socket unit files to the single `qrexec-connect` service. It includes
-drop-ins that apply to all socket units named with a `qrexec-connect-` prefix
-to set default directives to all port-binding socket units. Together, this
-minimizes the amount of configuration users have to generate for each new port
-binding to a new file with three lines.
+a drop-in that applies to all socket units named with a `qrexec-connect-`
+prefix to set default directives to all port-binding socket units. Together,
+this minimizes the amount of configuration users have to generate for each new
+port binding to a new file with three-to-five lines of configuration plus the
+usual `systemctl` commands.
+
+## Installation.
+
+I don't intend to package this right now.
+
+I will generate a signed checksum file when I feel it's robust enough for daily
+use.
+
+### Client qube
+
+```console
+sudo make install-client
+```
+
+### Service qube
+
+#### qubes.ConnectTCP
+
+`qrexec-connect` can call any RPC, just like `qrexec-client-vm`. The existing
+`qubes.ConnectTCP` RPC works great with `qrexec-connect`. You don't need to
+install anything on service qubes if you only want to bind TCP ports between
+client and service qubes.
+
+#### qubes.ConnectNFS
+
+#### Unix socket-based RPCs
+
+## Configuration
+
+### Bind TCP ports between client and service qubes
+
+### Mount NFS exports as a different host 
+
+### Bind Unix sockets between client and service qubes
