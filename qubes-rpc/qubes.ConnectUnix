@@ -1,9 +1,0 @@
-#!/usr/bin/sh
-
-set -euf
-
-ID="qubes.ConnectUnix+${QREXEC_SERVICE_ARGUMENT}"
-
-systemd-cat --identifier="${ID}" echo "Connection from ${QREXEC_REMOTE_DOMAIN}"
-
-exec socat STDIO UNIX-CONNECT:"${XDG_RUNTIME_DIR}/qubes.ConnectUnix/${QREXEC_SERVICE_ARGUMENT}"

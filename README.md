@@ -1,84 +1,51 @@
-# qrexec-systemd-socket-activate
+# qrexec-connect
 
 _It's like qrexec-client-vm, but systemd-socket-activated._
 
-Enable systemd-managed qrexec network connections as systemd service instances.
-For example, to forward TCP connections to localhost port 1234 on a client qube
-to the same port on a service qube named "gitweb", create a drop-in file for an
-instance of the `qrexec-connect-tcp@.socket` unit on the client:
+qrexec-connect is a systemd-native service for qrexec network connections.
+Enable a new qrexec connection with a single systemd socket unit file. Manage
+and monitor connection services on client qubes with `systemctl`.
+
+For example, to forward TCP connections to 127.0.0.1:1234 on a client qube
+to the same port on the @default service qube (as defined in Qubes policy),
+create a new socket unit file with a `qrexec-connect-` prefix: 
 
 ```ini
-# /home/user/.config/systemd/user/qrexec-connect-tcp@1234.socket.d/gitweb.conf
+# /home/user/.config/systemd/user/qrexec-connect-gitweb.socket
 [Socket]
+# Arbitrary IP address port on the service qube:
 ListenStream=127.0.0.1:1234
-FileDescriptorName=gitweb
+# Arguments you would use with qrexec-client-vm:
+FileDescriptorName=@default qubes.ConnectTCP+1234
 ```
 
-To forward connections to 127.0.0.2:1234 on the same client qube to a service
-qube named `work`:
+To forward connections to 127.0.0.2:2345 on the client qube to gitweb on a
+service named `work`:
 
 ```ini
-# /home/user/.config/systemd/user/qrexec-connect-tcp@1234.socket.d/work.conf
+# /home/user/.config/systemd/user/qrexec-connect-gitweb-work.socket
 [Socket]
-ListenStream=127.0.0.2:1234
-FileDescriptorName=work
+ListenStream=127.0.0.1:2345
+FileDescriptorName=work qubes.ConnectTCP:1234
 ```
-
-Implement the classic Split-SSH by symlinking the SSH socket to a filename that
-doesn't use forbidden qrexec RPC argument characters on the service qube:
-
-```ini
-# service qube
-# /home/user/.config/systemd/user/gpg-agent-ssh.socket.d/qubes.ConnectUnix.conf
-[Socket]
-Symlinks=%t/qubes.ConnectUnix/gpg-agent-ssh
-```
-
-And a corresponding instance drop-in on the client qube:
-
-```ini
-# /home/user/.config/systemd/user/qrexec-connect-unix@gpg-agent-ssh.socket.d/@default.conf
-[Socket]
-ListenStream=%t/qrexec-connect-unix/S.gpg-agent.ssh
-FileDescriptorName=@default
-```
-
-With `qrexec-systemd-socket-activate`, each systemd service prefix (the part
-before the `@`) maps to a single Qubes RPC on a service qube:
-
-- qrexec-connect-tcp: qubes.ConnectTCP
-- qrexec-connect-unix: qubes.ConnectUnix (provided in this repository)
-- qrexec-connect-tcp-bind: qubes.ConnectTCPBind (provided in this repository)
-
-The RPC argument is the service instance name, the part between the `@` and the
-suffix, `.socket`. For example, the RPC argument in the gitweb example is
-`1234`.
-
-And the target qube is the value of `FileDescriptorName` in the instance drop-in.
 
 ## Motivation
 
-Users have to create a new pair of .socket and .service unit files for each
-service they want to expose through `qvm-connect-tcp`. This works, but requires
-the user to duplicate lot of content for each service. It doesn't allow
-forwarding to multiple target qubes with the same service because
-`qvm-connect-tcp` isn't systemd-socket-activated. And `qvm-connect-tcp` doesn't
-support forwarding Unix sockets or setting a source IP address for TCP
-connections.
+To [permanently bind a port between two qubes with
+`qrexec-client-vm`](https://www.qubes-os.org/doc/firewall/#opening-a-single-tcp-port-to-other-network-isolated-qube),
+users have to create a new pair of .socket and .service unit files for each
+port. This requires the user to duplicate a lot of content for each port. Since
+`qrexec-client-vm` only communicates through stdio, the corresponding socket
+unit must set the `Accept` directive to `true`. Systemd starts a new instance
+of the `qrexec-client-vm` service for each new connection, which generates a
+some noise in the service status.
 
-I wanted a more ergonomic way to enable forwarding network connections between
-client and service qubes. `qrexec-systemd-socket-activate` runs as a single
-systemd service for each of the above services, avoiding the systemd service
-proliferation that `qvm-connect-tcp` necessitates with `Accept=yes`. It allows
-(requires, actually) the user to explicitly declare the RPC argument as a
-systemd instance and the target qube for each local client address with
-`FileDescriptorName`. Since each of the parts that define a qrexec connection
-are encoded in systemd units, the user can easily discover and monitor them
-with `systemctl`.
-
-Unlike `qvm-connect-tcp`, `qrexec-systemd-socket-activate` supports arbitrary
-Qubes RPCs. The provided systemd service units start `qubes.ConnectTCP` and the
-RPCs provided in this repository. But the user can define new systemd
-socket-activated services to support any Qubes RPC they can imagine, like
-`qubes.ConnectAbstractUnix` or even `qubes.ConnectUnixBind`, if the user cared
-to write them.
+I wanted a more ergonomic, systemd-native way to permanently bind ports between
+qubes client and service qubes. `qrexec-connect` runs as a single,
+socket-activated systemd service for all port bindings, avoiding service
+instance proliferation. It accepts new connections by itself so users can apply
+multiple socket unit files to the single `qrexec-connect` service. It includes
+drop-ins that apply to all socket units named with a `qrexec-connect-` prefix
+to set default directives to all port-binding socket units. Together, this
+minimizes the amount of configuration users have to generate for each new port
+binding to a new file with three lines.

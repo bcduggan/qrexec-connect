@@ -1,0 +1,5 @@
+[Unit]
+Description=Bind client-service qube network addresses
+
+[Service]
+ExecStart=/opt/bin/qrexec-connect

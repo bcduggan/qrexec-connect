@@ -1,5 +1,0 @@
-[Unit]
-Description=Connect through qubes.BindConnectTCP
-
-[Service]
-ExecStart=/opt/bin/qrexec-systemd-socket-activate --rpc-arg='%i' qubes.ConnectTCPBind
