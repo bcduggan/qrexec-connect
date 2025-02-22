@@ -12,11 +12,11 @@ import argparse
 import qrexec.client
 import shlex
 
-class QrexecConnectException(Exception):
-    pass
-
-
 class QrexecConnect():
+    NO_LISTEN_FDS = 125
+    NO_LISTEN_FDS_AND_NAMES = 126
+    UNSUPPORTED_ADDRESS_FAMILY = 127
+
     def __init__(self):
         self.name = os.path.basename(sys.argv[0])
 
@@ -41,22 +41,29 @@ class QrexecConnect():
 
 
     async def run(self):
+        fds = systemd.daemon.listen_fds()
         fds_and_names = systemd.daemon.listen_fds_with_names()
 
-        if not len(fds_and_names):
-            print(f'Use {self.name} in a systemd socket-activated service unit file or with systemd-socket-activate.')
-            exit(0)
+        if not fds_and_names:
+            if fds:
+                print(
+                    f'FileDescriptorName undefined',
+                    file=sys.stderr
+                )
+                exit(self.NO_LISTEN_FDS_AND_NAMES)
+            else:
+                print(
+                    f'Use {self.name} in a systemd socket-activated service unit file or with systemd-socket-activate.',
+                    file=sys.stderr
+                )
+                exit(self.NO_LISTEN_FDS)
 
         self.logger.info('Starting connection servers')
 
-        try:
-            connection_servers = (
-                self.make_connection_server(fd, fd_name)
-                for fd, fd_name in fds_and_names.items()
-            )
-        except QrexecConnectException as exc:
-            logger.error(QrexecConnectException.message)
-            exit(1)
+        connection_servers = (
+            self.make_connection_server(fd, fd_name)
+            for fd, fd_name in fds_and_names.items()
+        )
 
         await asyncio.gather(*connection_servers)
 
@@ -78,7 +85,7 @@ class QrexecConnect():
         # Duplicate socket that systemd owns:
         sock = socket.socket(fileno=fd).dup()
     
-        self.logger.info(f"Starti{sock.getsockname()}: '{target_qube}' {rpc_service}")
+        self.logger.info(f"Starting {sock.getsockname()}: '{target_qube}' {rpc_service}")
     
         # start_server and start_unix_server take ownership of the socket passed
         # to them, which the Server object will close when it closes:
@@ -88,24 +95,31 @@ class QrexecConnect():
         elif sock.family == socket.AF_UNIX:
             server = await asyncio.start_unix_server(handle_connection, sock=sock)
         else:
-            err = f'Unsupported address family: {sock.family}'
-            self.logger.error(err)
-            raise QrexecConnectException(err)
+            self.logger.error(f'Unsupported address family: {sock.family}')
+            exit(self.UNSUPPORTED_ADDRESS_FAMILY)
     
         async with server:
             await server.serve_forever() 
 
 
     async def qrexec_handle_connection(self, target_qube, rpc_name, rpc_arg, reader, writer):
-        self.logger.debug(f"qrexec_handle_conection: '{target_qube}' {rpc_name}+{rpc_arg}")
-    
         while not reader.at_eof():
             data = await reader.read(self.buffer_size)
-    
+
             if data:
-                response = await self.qrexec_call_async(target_qube, rpc_name, arg=rpc_arg, input=data)
-                writer.write(response)
-                await writer.drain()
+                try:
+                    response = await self.qrexec_call_async(target_qube, rpc_name, arg=rpc_arg, input=data)
+                except subprocess.CalledProcessError as exc:
+                    fd_name = shlex.join(exc.cmd[1:])
+                    error_message = exc.stderr.decode('utf-8')
+                    self.logger.warning(f'{fd_name}: {error_message}')
+                    break
+                except Exception as exc:
+                    self.logger.exception(exc)
+                    break
+                else:
+                    writer.write(response)
+                    await writer.drain()
             else:
                 reader.feed_eof()
     
@@ -116,13 +130,18 @@ class QrexecConnect():
     async def qrexec_call_async(self, dest, rpcname, arg=None, input=None):
         command = qrexec.client.make_command(dest, rpcname, arg)
     
-        process = await asyncio.create_subprocess_exec(*command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    
-        stdout, _stderr = await process.communicate(input)
-        
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate(input)
+
         if process.returncode !=0:
-            raise subprocess.CalledProcessError(process.returncode, command)
-    
+            raise subprocess.CalledProcessError(process.returncode, command, stderr=stderr)
+
         return stdout
 
 
