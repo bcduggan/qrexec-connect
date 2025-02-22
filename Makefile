@@ -21,4 +21,4 @@ install-qrexec-connect: qrexec-connect | /opt/bin/.
 	cp --preserve=mode qrexec-connect /opt/bin/
 
 install-sd-units: systemd-user/.
-	cp --preserve=mode systemd-user/* /etc/systemd/user/
+	cp --recursive --preserve=mode systemd-user/* /etc/systemd/user/
