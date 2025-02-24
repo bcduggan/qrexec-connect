@@ -1,14 +1,14 @@
 # qrexec-connect
-
 _It's like qrexec-client-vm, but systemd-socket-activated._
 
-qrexec-connect is a systemd-native service for network connections. Enable a
-new qrexec connection with a single systemd socket unit file. Manage and
-monitor connection services on client qubes with `systemctl`.
+qrexec-connect is a systemd-native service for controlling inter-qube network
+connections over qrexec with systemd. Enable a new qrexec connection with a
+single systemd socket unit file. Manage and monitor connection services on
+client qubes with systemctl.
 
 For example, to forward TCP connections to 127.0.0.1:1234 on a client qube
-to the same port on the @default service qube (as defined in Qubes policy),
-create a new socket unit file with a `qrexec-connect-` prefix: 
+to the same port on the @default service qube, create a new socket unit file
+with a `qrexec-connect-` prefix: 
 
 ```ini
 # /home/user/.config/systemd/user/qrexec-connect-gitweb.socket
@@ -17,6 +17,10 @@ create a new socket unit file with a `qrexec-connect-` prefix:
 ListenStream=127.0.0.1:1234
 # Arguments you would use with qrexec-client-vm:
 FileDescriptorName=@default qubes.ConnectTCP+1234
+
+# Each user-generated socket unit needs its own Install section.
+[Install]
+WantedBy=sockets.target
 ```
 
 To forward connections to 127.0.0.2:2345 on the client qube to gitweb on a
@@ -27,7 +31,11 @@ service named `work`:
 [Socket]
 ListenStream=127.0.0.1:2345
 FileDescriptorName=work qubes.ConnectTCP:1234
+
+[Install]
+WantedBy=sockets.target
 ```
+See [Examples](#examples) to complete the setup.
 
 ## Motivation
 
@@ -51,36 +59,177 @@ this minimizes the amount of configuration users have to generate for each new
 port binding to a new file with three-to-five lines of configuration plus the
 usual `systemctl` commands.
 
-## Installation.
+## Installation
 
 I don't intend to package this right now.
 
 I will generate a signed checksum file when I feel it's robust enough for daily
 use.
 
-### Client qube
+**Client qube**
+
+This will install to directories that only persist on template qubes. You don't
+need to restart the qube to use qrexec-connect, so you can install it in an App
+qube if you just want to test it.
 
 ```console
-sudo make install-client
+user@client:~$ sudo make install-client
 ```
 
-### Service qube
+To install in an App qube with persistence, copy the systemd unit and drop-in
+to `/usr/local/systemd/user` and the qrexec-connect executable to
+`/usr/local/bin` assuming no naming conflict. Take a look a the commands in the
+`Makefile` to preserve file modes.
 
-#### qubes.ConnectTCP
+**Service qube**
 
-`qrexec-connect` can call any RPC, just like `qrexec-client-vm`. The existing
-`qubes.ConnectTCP` RPC works great with `qrexec-connect`. You don't need to
-install anything on service qubes if you only want to bind TCP ports between
-client and service qubes.
+qrexec-connect doesn't require any installation on the service qube to use with
+the qubes.ConnectTCP RPC.
 
-#### qubes.ConnectNFS
+Using qrexec-connect to bind Unix sockets or other custom RPCs, like the
+included qubes.ConnectNFS, requires user-specific server configuration. See
+[Examples](#examples).
 
-#### Unix socket-based RPCs
+## Examples
 
-## Configuration
+### TCP
 
-### Bind TCP ports between client and service qubes
+Bind TCP sockets between qubes just like qvm-connect-tcp or the [Accept=true
+usage of qrexec-client-vm with
+qubes.ConnectTCP](https://www.qubes-os.org/doc/firewall/#opening-a-single-tcp-port-to-other-network-isolated-qube).
 
-### Mount NFS exports as a different host 
+**Client qube**
 
-### Bind Unix sockets between client and service qubes
+Create `/home/user/.config/systemd/user/qrexec-connect-ssh.socket` with this content:
+
+```ini
+[Socket]
+ListenStream=127.0.0.1:2222
+FileDescriptorName=ssh-server qubes.ConnectTCP+2222
+
+[Install]
+WantedBy=sockets.target
+```
+
+Reload systemd user unit files and start the new socket unit, only:
+
+```console
+user@ssh-client:~$ systemctl --user daemon-reload
+user@ssh-client:~$ systemctl --user start qrexec-connect-ssh.socket
+```
+
+Don't start the qrexec-connect service itself.
+
+This will start the socket for this session, but it won't cause the socket to
+start after you restart the client qube. To make this socket persistent, run:
+
+```console
+user@ssh-client:~$ systemctl --user enable qrexec-connect-ssh.socket
+```
+
+**Service qube**
+
+qrexec-connect doesn't require service qube configuration for any normal TCP port binding.
+
+**Policy**
+
+Create a Qubes policy to allow connections from a client qube named
+`ssh-client` to a service qube named `ssh-server`:
+
+```
+qubes.ConnectTCP +2222 ssh-client ssh-server allow
+```
+
+**Test**
+
+Now can SSH to localhost on the client qube at 127.0.0.1:2222:
+
+```console
+user@ssh-client:~$ ssh -p 2222 user@127.0.0.1
+```
+
+### Unix sockets
+
+Bind Unix sockets between qubes. This probably also works with a
+qrexec-client-vm template service and an Accept=true socket unit, but is
+undocumented.
+
+**Client qube**
+
+Create `/home/user/.config/systemd/user/qrexec-connect-ssh-agent.socket` with this content:
+
+```ini
+[Socket]
+ListenStream=%t/qrexec-connect/ssh-agent
+FileDescriptorName=@default qubes.ConnectSSHAgent
+```
+
+`%t` is a systemd unit file specifier that expands to `$XDG_RUNTIME_DIR`. For
+the Qubes default user, this will almost always be `/run/user/1000`.
+
+It's safer and more organized to use a common parent directory for files a
+single application controls in the `$XDG_RUNTIME_DIR` directory. This socket unit
+uses the `qrexec-connect` directory, but users can assign any directory and
+socket filename that doesn't already exist and the user can read and write.
+
+systemd will create any directories that don't already exist before creating
+the socket file itself.
+
+The path value for `ListenStream` is only a convention.
+
+The FileDescriptorName value uses `@default` as the destination qube, just like
+qrexec-connect-vm accepts. See the Policy section to see how to configure the
+default service qube.
+
+Reload systemd user unit files and start the new socket unit, only:
+
+```console
+user@ssh-client:~$ systemctl --user daemon-reload
+user@sss-client:~$ systemctl --user start qrexec-connect-ssh-agent.socket
+```
+
+Don't start the qrexec-connect service itself.
+
+This will start the socket for this session, but it won't cause the socket to
+start after you restart the client qube. To make this socket persistent, run:
+
+```console
+user@client:~$ systemctl --user enable qrexec-connect-ssh-agent.socket
+```
+
+**Service qube**
+
+Create a symlink to the socket you want to bind from the service qube to the
+client qube:
+
+```console
+user@ssh-agent:~$ ln --symbolic /run/user/1000/gnupg/S.gpg-agent.ssh /etc/qubes-rpc/qubes.ConnectSSHAgent
+```
+
+Configure the socket RPC so that the qrexec daemon doesn't send any prefix data
+before sending data from the client qube. Create
+/etc/rpc-config/qubes.ConnectSSHAgent with the following content:
+
+```
+skip-service-descriptor=true
+```
+
+**Policy**
+
+```
+qubes.ConnectSSHAgent + ssh-client @default allow target=ssh-agent
+```
+
+**Test**
+
+Make sure the SSH agent on the service qube represents an SSH key:
+
+```console
+user@ssh-client:~$ SSH_AUTH_SOCK=/run/user/1000/gnupg/S.gpg-agent.ssh ssh-add -l
+```
+
+List the same represented SSH keys on the client:
+
+```console
+user@ssh-agent:~$ SSH_AUTH_SOCK=/run/user/1000/qrexec-connect/ssh-agent ssh-add -l
+```
