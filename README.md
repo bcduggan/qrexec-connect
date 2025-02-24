@@ -111,21 +111,14 @@ FileDescriptorName=ssh-server qubes.ConnectTCP+2222
 WantedBy=sockets.target
 ```
 
-Reload systemd user unit files and start the new socket unit, only:
+Reload systemd user unit files, start the new socket unit, and make it persistent across reboots:
 
 ```console
 user@ssh-client:~$ systemctl --user daemon-reload
-user@ssh-client:~$ systemctl --user start qrexec-connect-ssh.socket
+user@ssh-client:~$ systemctl --user enable --now qrexec-connect-ssh.socket
 ```
 
 Don't start the qrexec-connect service itself.
-
-This will start the socket for this session, but it won't cause the socket to
-start after you restart the client qube. To make this socket persistent, run:
-
-```console
-user@ssh-client:~$ systemctl --user enable qrexec-connect-ssh.socket
-```
 
 **Service qube**
 
@@ -180,25 +173,19 @@ the socket file itself.
 
 The path value for `ListenStream` is only a convention.
 
-The FileDescriptorName value uses `@default` as the destination qube, just like
+The `FileDescriptorName` value uses `@default` as the destination qube, just like
 qrexec-connect-vm accepts. See the Policy section to see how to configure the
 default service qube.
 
-Reload systemd user unit files and start the new socket unit, only:
+Reload systemd user unit files, start the new socket unit, and make it
+persistent across reboots:
 
 ```console
 user@ssh-client:~$ systemctl --user daemon-reload
-user@sss-client:~$ systemctl --user start qrexec-connect-ssh-agent.socket
+user@sss-client:~$ systemctl --user enable --now qrexec-connect-ssh-agent.socket
 ```
 
 Don't start the qrexec-connect service itself.
-
-This will start the socket for this session, but it won't cause the socket to
-start after you restart the client qube. To make this socket persistent, run:
-
-```console
-user@client:~$ systemctl --user enable qrexec-connect-ssh-agent.socket
-```
 
 **Service qube**
 
@@ -211,7 +198,7 @@ user@ssh-agent:~$ ln --symbolic /run/user/1000/gnupg/S.gpg-agent.ssh /etc/qubes-
 
 Configure the socket RPC so that the qrexec daemon doesn't send any prefix data
 before sending data from the client qube. Create
-/etc/rpc-config/qubes.ConnectSSHAgent with the following content:
+`/etc/rpc-config/qubes.ConnectSSHAgent` with the following content:
 
 ```
 skip-service-descriptor=true
