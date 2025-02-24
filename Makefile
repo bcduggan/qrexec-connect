@@ -19,3 +19,7 @@ install-qrexec-connect: qrexec-connect | /opt/bin/.
 
 install-sd-units: systemd-user/.
 	cp --recursive --preserve=mode systemd-user/* /etc/systemd/user/
+
+install-connectnfs: qubes-rpc/qubes.ConnectNFS rpc-config/qubes.ConnectNFS
+	cp --preserve=mode qubes-rpc/qubes.ConnectNFS /etc/qubes-rpc/
+	cp --preserve=mode rpc-config/qubes.ConnectNFS /etc/qubes/rpc-config/

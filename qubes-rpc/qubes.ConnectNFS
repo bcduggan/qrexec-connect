@@ -1,7 +1,5 @@
-#!/usr/bin/bash
+#!/usr/bin/sh
 
 set -euf
-
-systemd-cat --identifier="${QREXEC_SERVICE_FULL_NAME}" echo "NFS connection from ${QREXEC_REMOTE_DOMAIN}"
 
 exec socat STDIO TCP:127.0.0.1:2049,bind="${QREXEC_SERVICE_ARGUMENT}"
