@@ -92,9 +92,9 @@ included qubes.ConnectNFS, requires user-specific server configuration. See
 
 ## Examples
 
-### TCP
+### TCP ports
 
-Bind TCP sockets between qubes just like qvm-connect-tcp or the [Accept=true
+Bind TCP ports between qubes just like qvm-connect-tcp or the [Accept=true
 usage of qrexec-client-vm with
 qubes.ConnectTCP](https://www.qubes-os.org/doc/firewall/#opening-a-single-tcp-port-to-other-network-isolated-qube).
 
@@ -169,9 +169,7 @@ uses the `qrexec-connect` directory, but users can assign any directory and
 socket filename that doesn't already exist and the user can read and write.
 
 systemd will create any directories that don't already exist before creating
-the socket file itself.
-
-The path value for `ListenStream` is only a convention.
+the socket file itself. The path value for `ListenStream` is only a convention.
 
 The `FileDescriptorName` value uses `@default` as the destination qube, just like
 qrexec-connect-vm accepts. See the Policy section to see how to configure the
@@ -186,6 +184,12 @@ user@sss-client:~$ systemctl --user enable --now qrexec-connect-ssh-agent.socket
 ```
 
 Don't start the qrexec-connect service itself.
+
+_NB: It's possible to use the same socket path as the service qube on the
+client qube. If the client qube creates that socket automatically, the user
+will need to disable the functionality that automatically creates that socket.
+For example, to use `ListenStream=%t/gnupg/S.gpg-agent.ssh` on Debian, run
+`systemctl --user mask gpg-agent-ssh.socket` on the client qube._
 
 **Service qube**
 
@@ -222,4 +226,141 @@ List the same represented SSH keys on the client:
 
 ```console
 user@ssh-agent:~$ SSH_AUTH_SOCK=/run/user/1000/qrexec-connect/ssh-agent ssh-add -l
+```
+
+### NFS
+
+qrexec-connect, qvm-connect-tcp, and qrexec-client-vm can bind the standard
+NFS port, 2049, from a service qube to a client qube with qubes.ConnectTCP. But
+this method only allows client qubes to connect as a single remote host from
+the service qube's perspective. For example, calling `nfs-server
+qubes.ConnectTCP+2049` will always connect from the localhost IP on the service
+qube, 127.0.0.1. This means the service qube must apply the same access control
+rules to all client qube connections.
+
+The qubes.ConnectNFS RPC always connects to port 2049 on the service qube. Its
+argument is an IP address to bind to ("bind" is overloaded here), or
+connect from, on the service qube, like `nfs-server qubes.ConnectNFS+127.0.1.1`.
+This allows the service qube to create exports with host-specific permissions.
+For example:
+
+```
+# /etc/exports
+/home/user/Documents 127.0.1.1(rw,...)
+/home/user/Documents 127.0.1.2(ro,...)
+/home/user/Pictures  127.0.1.3(rw,...)
+```
+
+Use Qubes policy to control the server-local IP address that client qubes can
+bind to.
+
+**Client qube**
+
+Create a socket unit file named
+`/home/user/.config/systemd/user/qrexec-connect-nfs-documents.socket` with this
+content:
+
+```ini
+[Socket]
+ListenStream=127.0.0.1:2049
+FileDescriptorName=nfs-server qubes.ConnectNFS+127.0.1.1
+```
+
+Create a mount unit file named
+`/home/user/.config/systemd/user/nfs-documents.mount` with this content:
+
+```ini
+[Unit]
+Description=Documents
+After=qrexec-connect-nfs-documents.socket
+
+[Mount]
+What=127.0.0.1:/home/user/Documents
+Where=/home/user/Documents
+Type=nfs4
+Options=defaults,user,noauto,relatime,rw
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Reload systemd units and start the mount unit:
+
+```console
+user@nfs-client:~$ systemctl --user daemon-reload
+user@nfs-client:~$ systemctl --user start nfs-documents.mount
+```
+
+**Service qube**
+
+Install the qubes.ConnectNFS RPC:
+
+```console
+user@nfs-server:~$ sudo make install-connectnfs
+```
+
+Install NFS and enable NFSv4 on the service qube. On Debian:
+
+```console
+user@nfs-server:~$ sudo apt update
+user@nfs-server:~$ sudo apt install --assume-yes nfs-kernel-server
+```
+
+On Debian, you may also need to unmask `rpcbind.service`:
+
+```console
+user@nfs-server:~$ sudo systemctl unmask rpcbind.service
+```
+
+Define exports in `/etc/exports`:
+
+```
+/home/user/Documents 127.0.1.1(rw,sync,no_subtree_check,root_squash,insecure)
+/home/user/Documents 127.0.1.2(ro,sync,no_subtree_check,root_squash,insecure)
+```
+
+This example defines a read-only and read-write export for two remote hosts for
+demonstration purposes.
+
+The `insecure` option is required because qubes.ConnectNFS should be executed
+as the Qubes default, non-root user, `user`, which can only bind to ports
+higher than 1000. NFS considers this "insecure".
+
+Restart the NFS server and verify the export is registered:
+
+```console
+user@nfs-server:~$ sudo systemctl restart nfs-server.service
+user@nfs-server:~$ sudo exportfs -s
+/home/user/Documents  127.0.1.1(sync,wdelay,hide,no_subtree_check,sec=sys,rw,insecure,root_squash,no_all_squash)
+/home/user/Documents  127.0.1.2(sync,wdelay,hide,no_subtree_check,sec=sys,ro,insecure,root_squash,no_all_squash)
+```
+
+The `127.0.1.1.` address doesn't exist by default. IP address definitions are
+distribution-specific. On Debian, create a `/etc/network/interfaces.d/nfs` with
+the following content:
+
+```
+auto lo
+iface lo inet loopback
+
+iface lo:0 inet static
+    address 127.0.1.1/8
+
+iface lo:1 inet static
+    address 127.0.1.1/8
+```
+
+This configuration uses interface aliasing to avoid errors when shutting down the interface. See [NetworkConfiguration](https://wiki.debian.org/NetworkConfiguration)
+
+Shutdown and startup the lo interface:
+
+```console
+user@nfs-server:~$ sudo ifdown lo
+user@nfs-server:~$ sudo ifup lo
+```
+
+**Policy**
+
+```
+qubes.ConnectNFS +127.0.1.1 nfs-client nfs-server allow
 ```
