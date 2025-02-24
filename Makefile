@@ -1,18 +1,15 @@
 default:
 
-.PHONY: install-server \
+.PHONY: install-connect-nfs \
 	install-client \
-	install-rpcs \
 	install-qrexec-connect \
 	install-sd-units
 
-install-server:	install-qubes-rpcs
-
 install-client: install-qrexec-connect install-sd-units
 
-install-qubes-rpcs: qubes-rpc/.
-	cp --preserve=mode qubes-rpc/* /etc/qubes-rpc/
-	cp --preserve=mode rpc-config/* /etc/qubes/rpc-config/
+install-connect-nfs: rpc/qubes.ConnectNFS.rpc rpc/qubes.ConnectNFS.config
+	cp --preserve=mode rpc/qubes.ConnectNFS.rpc /etc/qubes-rpc/qubes.ConnectNFS
+	cp --preserve=mode rpc/qubes.ConnectNFS.config /etc/qubes/rpc-config/qubes.ConnectNFS
 
 /opt/bin/.:
 	mkdir --parents $(@D)
