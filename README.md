@@ -162,6 +162,9 @@ Create `/home/user/.config/systemd/user/qrexec-connect-ssh-agent.socket` with th
 [Socket]
 ListenStream=%t/qrexec-connect/ssh-agent
 FileDescriptorName=@default qubes.ConnectSSHAgent
+
+[Install]
+WantedBy=sockets.target
 ```
 
 `%t` is a systemd unit file specifier that expands to `$XDG_RUNTIME_DIR`. For
