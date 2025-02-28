@@ -2,4 +2,6 @@
 Description=Bind client-service qube network addresses
 
 [Service]
+StandardOutput=journal
+StandardError=inherit
 ExecStart=/opt/bin/qrexec-connect
