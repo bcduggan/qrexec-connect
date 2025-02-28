@@ -110,24 +110,20 @@ class QrexecConnect:
         command = qrexec.client.make_command(target_qube, rpc_name, rpc_arg)
 
         qrexec_client = await asyncio.create_subprocess_exec(
-                *command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
+            *command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
         async with asyncio.TaskGroup() as task_group:
             task_group.create_task(qrexec_client.wait())
-            task_group.create_task(
-                self.qrexec_pipe(reader, qrexec_client.stdin)
-            )
-            task_group.create_task(
-                self.qrexec_pipe(qrexec_client.stdout, writer)
-            )
+            task_group.create_task(self.qrexec_pipe(reader, qrexec_client.stdin))
+            task_group.create_task(self.qrexec_pipe(qrexec_client.stdout, writer))
 
         if qrexec_client.returncode != 0:
             if rpc_arg:
-                rpc_service = '+'.join((rcp_name, rpc_arg))
+                rpc_service = "+".join((rcp_name, rpc_arg))
             else:
                 rpc_service = rpc_name
 
@@ -148,6 +144,7 @@ class QrexecConnect:
 
         sink.close()
         await sink.wait_closed()
+
 
 if __name__ == "__main__":
     try:
