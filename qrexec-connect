@@ -74,6 +74,7 @@ class QrexecConnect:
         rpc_service_components = rpc_service.split("+", maxsplit=1)
 
         rpc_name = rpc_service_components[0]
+
         if len(rpc_service_components) == 2:
             rpc_arg = rpc_service_components[1]
         else:
@@ -108,7 +109,7 @@ class QrexecConnect:
     ):
         command = qrexec.client.make_command(target_qube, rpc_name, rpc_arg)
 
-        process = await asyncio.create_subprocess_exec(
+        qrexec_client = await asyncio.create_subprocess_exec(
                 *command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -116,13 +117,25 @@ class QrexecConnect:
             )
 
         async with asyncio.TaskGroup() as task_group:
-            task_group.create_task(process.wait())
+            task_group.create_task(qrexec_client.wait())
             task_group.create_task(
-                self.qrexec_pipe(reader, process.stdin)
+                self.qrexec_pipe(reader, qrexec_client.stdin)
             )
             task_group.create_task(
-                self.qrexec_pipe(process.stdout, writer)
+                self.qrexec_pipe(qrexec_client.stdout, writer)
             )
+
+        if qrexec_client.returncode != 0:
+            if rpc_arg:
+                rpc_service = '+'.join((rcp_name, rpc_arg))
+            else:
+                rpc_service = rpc_name
+
+            stderr = await qrexec_client.stderr.read(self.buffer_size)
+            error_message = stderr.decode("utf-8")
+
+            fd_name = shlex.join((target_qube, rpc_service))
+            self.logger.warning(f"{fd_name}: {error_message}")
 
     async def qrexec_pipe(self, source, sink):
         while not source.at_eof():
