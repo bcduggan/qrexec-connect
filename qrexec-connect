@@ -1,8 +1,8 @@
 #!/usr/bin/python
 
 import sys
+import os
 import logging
-import os.path
 import asyncio
 import socket
 import subprocess
@@ -12,80 +12,71 @@ import argparse
 import qrexec.client
 import shlex
 
+
 class QrexecConnect():
     NO_LISTEN_FDS = 125
-    NO_LISTEN_FDS_AND_NAMES = 126
-    UNSUPPORTED_ADDRESS_FAMILY = 127
+    UNSUPPORTED_ADDRESS_FAMILY = 126
+    FILEDESCRIPTORNAME_ERROR = 127
 
     def __init__(self):
-        self.name = os.path.basename(sys.argv[0])
-
         arg_parser = argparse.ArgumentParser(
-            description=f"{self.name}: systemd-socket-activated qrexec-client-vm"
+            description='%(prog)s: systemd-native qrexec-client-vm',
         )
-
         arg_parser.add_argument('--buffer-size', type=int, default=65536)
         arg_parser.add_argument('-d', '--debug', action='store_true')
+
+        self.logger = logging.getLogger(arg_parser.prog)
+        self.logger.addHandler(systemd.journal.JournalHandler(SYSLOG_IDENTIFIER=arg_parser.prog))
+
         args = arg_parser.parse_args()
-        
         self.buffer_size = args.buffer_size
         self.debug = args.debug
 
-        self.logger = logging.getLogger(self.name)
-        self.logger.addHandler(systemd.journal.JournalHandler(SYSLOG_IDENTIFIER=self.name))
-        self.logger.setLevel(logging.DEBUG) if args.debug else self.logger.setLevel(logging.DEBUG)
+        if self.debug:
+            self.logger.setLevel(logging.DEBUG)
+        else:
+            self.logger.setLevel(logging.INFO)
 
-        self.qrexec_client_vm_arg_parser = argparse.ArgumentParser()
-        self.qrexec_client_vm_arg_parser.add_argument('target_qube')
-        self.qrexec_client_vm_arg_parser.add_argument('rpc_service')
+        self.fds_with_names = systemd.daemon.listen_fds_with_names()
+
+        if not self.fds_with_names:
+            print('No listen FDs found', file=sys.stderr)
+            exit(self.NO_LISTEN_FDS)
 
 
     async def run(self):
-        fds = systemd.daemon.listen_fds()
-        fds_and_names = systemd.daemon.listen_fds_with_names()
-
-        if not fds_and_names:
-            if fds:
-                print(
-                    f'FileDescriptorName undefined',
-                    file=sys.stderr
-                )
-                exit(self.NO_LISTEN_FDS_AND_NAMES)
-            else:
-                print(
-                    f'Use {self.name} in a systemd socket-activated service unit file or with systemd-socket-activate.',
-                    file=sys.stderr
-                )
-                exit(self.NO_LISTEN_FDS)
-
         self.logger.info('Starting connection servers')
 
         connection_servers = (
             self.make_connection_server(fd, fd_name)
-            for fd, fd_name in fds_and_names.items()
+            for fd, fd_name in self.fds_with_names.items()
         )
 
         await asyncio.gather(*connection_servers)
 
 
     def make_connection_server(self, fd, fd_name):
+        # Duplicate socket that systemd owns:
+        sock = socket.socket(fileno=fd).dup()
+
         argv = shlex.split(fd_name)
-        args = self.qrexec_client_vm_arg_parser.parse_args(argv)
 
-        return self.serve_connection(fd, args.target_qube, args.rpc_service)
+        if len(argv) != 2:
+            print(
+                f'{sock.getsockname()}: FileDescriptorName takes 2 arguments but {len(argv)} {"was" if len(argv) == 1 else "were"} given',
+                file=sys.stderr
+            )
+            exit(self.FILEDESCRIPTORNAME_ERROR)
+
+        return self.serve_connection(sock, argv[0], argv[1])
 
 
-    async def serve_connection(self, fd, target_qube, rpc_service):
+    async def serve_connection(self, sock, target_qube, rpc_service):
         rpc_name, rpc_arg = rpc_service.split('+', maxsplit=1)
     
         # functools.partial can't generate async functions, yet
         async def handle_connection(reader, writer):
             await self.qrexec_handle_connection(target_qube, rpc_name, rpc_arg, reader, writer)
-    
-        # Duplicate socket that systemd owns:
-        sock = socket.socket(fileno=fd).dup()
-    
-        self.logger.info(f"Starting {sock.getsockname()}: '{target_qube}' {rpc_service}")
     
         # start_server and start_unix_server take ownership of the socket passed
         # to them, which the Server object will close when it closes:
@@ -95,9 +86,13 @@ class QrexecConnect():
         elif sock.family == socket.AF_UNIX:
             server = await asyncio.start_unix_server(handle_connection, sock=sock)
         else:
-            self.logger.error(f'Unsupported address family: {sock.family}')
+            print(f'Unsupported address family: {sock.family}', file=sys.stderr)
             exit(self.UNSUPPORTED_ADDRESS_FAMILY)
     
+        self.logger.info(
+            f'{sock.getsockname()}: {shlex.join((target_qube, rpc_service))}'
+        )
+
         async with server:
             await server.serve_forever() 
 
@@ -108,7 +103,9 @@ class QrexecConnect():
 
             if data:
                 try:
-                    response = await self.qrexec_call_async(target_qube, rpc_name, arg=rpc_arg, input=data)
+                    response = await self.qrexec_call_async(
+                        target_qube, rpc_name, arg=rpc_arg, input=data
+                    )
                 except subprocess.CalledProcessError as exc:
                     fd_name = shlex.join(exc.cmd[1:])
                     error_message = exc.stderr.decode('utf-8')
