@@ -116,15 +116,13 @@ class QrexecConnect:
             )
 
         async with asyncio.TaskGroup() as task_group:
+            task_group.create_task(process.wait())
             task_group.create_task(
                 self.qrexec_pipe(reader, process.stdin)
             )
             task_group.create_task(
                 self.qrexec_pipe(process.stdout, writer)
             )
-        
-        process.terminate()
-        await process.wait()
 
     async def qrexec_pipe(self, source, sink):
         while not source.at_eof():
@@ -133,7 +131,7 @@ class QrexecConnect:
                 sink.write(data)
                 await sink.drain()
             else:
-                reader.fead_eof()
+                source.feed_eof()
 
         sink.close()
         await sink.wait_closed()
