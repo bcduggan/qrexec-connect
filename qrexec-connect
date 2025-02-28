@@ -143,4 +143,7 @@ class QrexecConnect():
 
 
 if __name__ == "__main__":
-    asyncio.run(QrexecConnect().run())
+    try:
+        asyncio.run(QrexecConnect().run())
+    except KeyboardInterrupt as exc:
+        exit(0)
