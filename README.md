@@ -30,7 +30,7 @@ service named `work`:
 # /home/user/.config/systemd/user/qrexec-connect-gitweb-work.socket
 [Socket]
 ListenStream=127.0.0.1:2345
-FileDescriptorName=work qubes.ConnectTCP:1234
+FileDescriptorName=work qubes.ConnectTCP+1234
 
 [Install]
 WantedBy=sockets.target
