@@ -56,8 +56,7 @@ class QrexecConnect:
         await asyncio.gather(*connection_servers)
 
     def make_connection_server(self, fd, fd_name):
-        # Duplicate socket that systemd owns:
-        sock = socket.socket(fileno=fd).dup()
+        sock = socket.socket(fileno=fd)
 
         argv = shlex.split(fd_name)
 
@@ -86,9 +85,6 @@ class QrexecConnect:
                 target_qube, rpc_name, rpc_arg, reader, writer
             )
 
-        # start_server and start_unix_server take ownership of the socket passed
-        # to them, which the Server object will close when it closes:
-        # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.create_server
         if sock.family in (socket.AF_INET, socket.AF_INET6):
             server = await asyncio.start_server(handle_connection, sock=sock)
         elif sock.family == socket.AF_UNIX:
