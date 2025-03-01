@@ -2,6 +2,8 @@
 
 import sys
 import os
+import signal
+import functools
 import logging
 import asyncio
 import socket
@@ -14,6 +16,8 @@ import shlex
 
 
 class QrexecConnect:
+    exit_signals = ("SIGINT", "SIGTERM")
+
     NO_LISTEN_FDS = 125
     UNSUPPORTED_ADDRESS_FAMILY = 126
     FILEDESCRIPTORNAME_ERROR = 127
@@ -45,13 +49,30 @@ class QrexecConnect:
             print("No listen FDs found", file=sys.stderr)
             exit(self.NO_LISTEN_FDS)
 
+    def exit(self, signame, loop):
+        systemd.daemon.notify("STOPPING=1")
+        loop.stop
+        exit(0)
+
     async def run(self):
+        loop = asyncio.get_running_loop()
+
+        for signame in self.exit_signals:
+            qrexec_connect_exit = functools.partial(self.exit, signame, loop)
+
+            loop.add_signal_handler(
+                getattr(signal, signame),
+                qrexec_connect_exit,
+            )
+
         self.logger.info("Starting connection servers")
 
         connection_servers = (
             self.make_connection_server(fd, fd_name)
             for fd, fd_name in self.fds_with_names.items()
         )
+
+        systemd.daemon.notify("READY=1")
 
         await asyncio.gather(*connection_servers)
 
@@ -143,7 +164,4 @@ class QrexecConnect:
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(QrexecConnect().run())
-    except KeyboardInterrupt as exc:
-        exit(0)
+    asyncio.run(QrexecConnect().run())

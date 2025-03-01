@@ -1,7 +1,8 @@
 [Unit]
-Description=Bind client-service qube network addresses
+Description=systemd-native qrexec-client-vm service
 
 [Service]
+Type=notify
 StandardOutput=journal
 StandardError=inherit
 ExecStart=/opt/bin/qrexec-connect
