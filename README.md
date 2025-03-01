@@ -61,12 +61,11 @@ usual `systemctl` commands.
 
 ## Installation
 
-I don't intend to package this right now.
-
-I will generate a signed checksum file when I feel it's robust enough for daily
-use.
+This isn't packaged right now.
 
 **Client qube**
+
+Debian clients require the `python3-systemd` package.
 
 This will install to directories that only persist on template qubes. You don't
 need to restart the qube to use qrexec-connect, so you can install it in an App
