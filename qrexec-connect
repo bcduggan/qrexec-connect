@@ -129,12 +129,49 @@ class QrexecConnect:
             print(f"Unsupported address family: {sock.family}", file=sys.stderr)
             exit(self.UNSUPPORTED_ADDRESS_FAMILY)
 
-        self.logger.info(
-            f"{sock.getsockname()}: {shlex.join((target_qube, rpc_service))}"
-        )
+        sock_address = self.sock_address(sock)
+        self.logger.info(f"{sock_address} ({shlex.join((target_qube, rpc_service))})")
 
         async with server:
             await server.serve_forever()
+
+    def sock_address(self, sock):
+        """Format socket address for logging
+
+        Parameters
+        ----------
+        sock:
+            A socket
+
+        Returns
+        -------
+            A string representing the socket address
+        """
+        sockname = sock.getsockname()
+
+        if sock.family == socket.AF_UNIX:
+            if type(sockname) == str:
+                address = sockname
+            elif type(sockname) == bytes:
+                after_null_address = sockname[1:]
+                string_address = after_null_address.decode(sys.getdefaultencoding())
+                address = f"@{string_address}"
+            else:
+                address = sockname
+        elif sock.family == socket.AF_INET:
+            if type(sockname) == tuple and len(sockname) == 2:
+                address = f"{sockname[0]}:{sockname[1]}"
+            else:
+                address = sockname
+        elif sock.family == socket.AF_INET6:
+            if type(sockname) == tuple and len(sockname) == 4:
+                address = f"[{sockname[0]}]:{sockname[1]}"
+            else:
+                address = sockname
+        else:
+            address = sockname
+
+        return address
 
     def parse_fd_name(self, fd_name):
         """Parse systemd FileDescriptorName value
