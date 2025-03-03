@@ -80,11 +80,15 @@ class QrexecConnect:
                 qrexec_connect_exit,
             )
 
-        systemd.daemon.notify("READY=1")
+        server_arg_tuples = [
+            self.get_server_args(fd, fd_name)
+            for fd, fd_name in self.fds_with_names.items()
+        ]
 
-        async with asyncio.TaskGroup() as connection_server_group:
-            for fd, fd_name in self.fds_with_names.items():
-                connection_server_group.create_task(self.serve_connection(fd, fd_name))
+        async with asyncio.TaskGroup() as server_task_group:
+            for server_args in server_arg_tuples:
+                server_task_group.create_task(self.serve_connection(*server_args))
+            systemd.daemon.notify("READY=1")
 
     def exit(self, signame, loop):
         """Gracefully exits in response to signals
@@ -101,7 +105,7 @@ class QrexecConnect:
         loop.stop
         exit(0)
 
-    async def serve_connection(self, fd, fd_name):
+    def get_server_args(self, fd, fd_name):
         """Start asyncio connection server from systemd socket and qrexec-client-vm arguments
 
         Parameters
@@ -111,9 +115,15 @@ class QrexecConnect:
 
         fd_name: str
             FileDescriptorName value for systemd socket
+
+        Returns
+        -------
+        tuple[coro, coro, socket.socket, str]
+            Tuple of arguments for self.serve_connection
         """
-        sock = socket.socket(fileno=fd)
         target_qube, rpc_service = self.parse_fd_name(fd_name)
+        sock = socket.socket(fileno=fd)
+        sock_address = self.sock_address(sock)
 
         # functools.partial can't generate async functions, yet
         async def handle_connection(reader, writer):
@@ -122,16 +132,41 @@ class QrexecConnect:
             )
 
         if sock.family in (socket.AF_INET, socket.AF_INET6):
-            server = await asyncio.start_server(handle_connection, sock=sock)
+            start_server = asyncio.start_server
         elif sock.family == socket.AF_UNIX:
-            server = await asyncio.start_unix_server(handle_connection, sock=sock)
+            start_server = asyncio.start_unix_server
         else:
             print(f"Unsupported address family: {sock.family}", file=sys.stderr)
             exit(self.UNSUPPORTED_ADDRESS_FAMILY)
 
-        sock_address = self.sock_address(sock)
-        self.logger.info(f"{sock_address} ({shlex.join((target_qube, rpc_service))})")
+        return (
+            start_server,
+            handle_connection,
+            sock,
+            f"{sock_address} ({shlex.join((target_qube, rpc_service))})",
+        )
 
+    async def serve_connection(
+        self, start_server, handle_connection, sock, description
+    ):
+        """Start connection server and serve connections forever
+
+        Parameters
+        ----------
+        start_server: coro
+            The start_server coroutine that matches the socket's address family
+
+        handle_connection: coro
+            Connection handler callback for the start_server coroutine
+
+        sock: socket.socket
+            Socket for the file descriptor that systemd is listening on
+
+        description: str
+            Socket address and qrexec-client-vm arguments for this connection server
+        """
+        server = await start_server(handle_connection, sock=sock)
+        self.logger.info(description)
         async with server:
             await server.serve_forever()
 
@@ -140,11 +175,12 @@ class QrexecConnect:
 
         Parameters
         ----------
-        sock:
+        sock: socket.socket
             A socket
 
         Returns
         -------
+        str
             A string representing the socket address
         """
         sockname = sock.getsockname()
@@ -189,8 +225,9 @@ class QrexecConnect:
         argv = shlex.split(fd_name)
 
         if len(argv) != 2:
+            was_or_were = "was" if len(argv) == 1 else "were"
             print(
-                f'{sock.getsockname()}: FileDescriptorName takes 2 arguments but {len(argv)} {"was" if len(argv) == 1 else "were"} given',
+                f"FileDescriptorName takes 2 arguments but {len(argv)} {was_or_were} given: '{fd_name}'",
                 file=sys.stderr,
             )
             exit(self.FILEDESCRIPTORNAME_ERROR)

@@ -3,6 +3,5 @@ Description=systemd-native qrexec-client-vm service
 
 [Service]
 Type=notify
-StandardOutput=journal
-StandardError=inherit
+StandardError=journal
 ExecStart=/opt/bin/qrexec-connect
