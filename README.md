@@ -1,5 +1,5 @@
 # qrexec-connect
-_It's like qrexec-client-vm, but systemd-socket-activated._
+_It's like qrexec-client-vm, but systemd socket-activated._
 
 qrexec-connect is a systemd-native service for controlling inter-qube network
 connections over qrexec with systemd. Enable a new qrexec connection with a
@@ -35,6 +35,14 @@ FileDescriptorName=work qubes.ConnectTCP+1234
 [Install]
 WantedBy=sockets.target
 ```
+
+Use systemd-socket-activate to quickly test without installing qrexec-connect
+or writing any systemd unit files:
+
+```console
+user@client:~$ systemd-socket-activate --listen=127.0.0.1:8000 --fdname="web-server qubes.ConnectTCP+8000" ./qrexec-connect
+```
+
 See [Examples](#examples) to complete the setup.
 
 ## Motivation
