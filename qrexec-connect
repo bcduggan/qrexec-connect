@@ -183,29 +183,19 @@ class QrexecConnect:
         str
             A string representing the socket address
         """
-        sockname = sock.getsockname()
+        address = sockname = sock.getsockname()
 
         if sock.family == socket.AF_UNIX:
-            if type(sockname) == str:
-                address = sockname
-            elif type(sockname) == bytes:
+            if type(sockname) == bytes:
                 after_null_address = sockname[1:]
                 string_address = after_null_address.decode(sys.getdefaultencoding())
                 address = f"@{string_address}"
-            else:
-                address = sockname
         elif sock.family == socket.AF_INET:
             if type(sockname) == tuple and len(sockname) == 2:
                 address = f"{sockname[0]}:{sockname[1]}"
-            else:
-                address = sockname
         elif sock.family == socket.AF_INET6:
             if type(sockname) == tuple and len(sockname) == 4:
                 address = f"[{sockname[0]}]:{sockname[1]}"
-            else:
-                address = sockname
-        else:
-            address = sockname
 
         return address
 
