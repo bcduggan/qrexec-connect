@@ -23,3 +23,9 @@ install-sd-units: systemd-user/.
 install-connectnfs: qubes-rpc/qubes.ConnectNFS rpc-config/qubes.ConnectNFS
 	cp --preserve=mode qubes-rpc/qubes.ConnectNFS /etc/qubes-rpc/
 	cp --preserve=mode rpc-config/qubes.ConnectNFS /etc/qubes/rpc-config/
+
+SHA512SUMS:
+	find . -type f -not -path "*/.git/*" -exec sha512sum {} > $@ \;
+
+SHA512SUMS.sign: SHA512SUMS
+	gpg --armor --output $@ --sign $<
