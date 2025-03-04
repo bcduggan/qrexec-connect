@@ -62,7 +62,7 @@ Mar 04 00:15:05 client systemd[684]: Started qrexec-connect.service - systemd-na
 Use systemctl to show the sockets each unit starts:
 
 ```console
-user@client:~/repos/qrexec-connect$ systemctl --user list-sockets
+user@client:~$ systemctl --user list-sockets
 LISTEN                                   UNIT                                  ACTIVATES                   
 /run/user/1000/gnupg/S.gpg-agent.ssh     qrexec-connect-gpg-agent-ssh.socket   qrexec-connect.service
 127.0.0.1:8000                           qrexec-connect-httpd.socket           qrexec-connect.service
