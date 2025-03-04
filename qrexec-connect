@@ -283,14 +283,8 @@ class QrexecConnect:
             )
 
         if qrexec_client.returncode != 0:
-            if rpc_arg:
-                rpc_service = "+".join((rcp_name, rpc_arg))
-            else:
-                rpc_service = rpc_name
-
-            stderr = await qrexec_client.stderr.read(self.buffer_size)
+            stderr = await qrexec_client.stderr.read()
             error_message = stderr.decode("ascii")
-
             fd_name = shlex.join((target_qube, rpc_service))
             self.logger.warning(f"{fd_name}: {error_message}")
 

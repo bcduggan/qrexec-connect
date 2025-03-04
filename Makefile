@@ -3,7 +3,8 @@ default:
 .PHONY: install-connect-nfs \
 	install-client \
 	install-qrexec-connect \
-	install-sd-units
+	install-sd-units \
+	clean-sums
 
 install-client: install-qrexec-connect install-sd-units
 
@@ -24,7 +25,10 @@ install-connectnfs: qubes-rpc/qubes.ConnectNFS rpc-config/qubes.ConnectNFS
 	cp --preserve=mode qubes-rpc/qubes.ConnectNFS /etc/qubes-rpc/
 	cp --preserve=mode rpc-config/qubes.ConnectNFS /etc/qubes/rpc-config/
 
-SHA512SUMS:
+clean-sums:
+	rm --force SHA512SUMS SHA512SUMS.sign
+
+SHA512SUMS: clean-sums
 	find . -type f -not -path "*/.git/*" -exec sha512sum {} > $@ \;
 
 SHA512SUMS.sign: SHA512SUMS
