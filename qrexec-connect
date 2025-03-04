@@ -85,10 +85,25 @@ class QrexecConnect:
             for fd, fd_name in self.fds_with_names.items()
         ]
 
+        ready_barrier = asyncio.Barrier(len(server_arg_tuples) + 1)
+
         async with asyncio.TaskGroup() as server_task_group:
+            server_task_group.create_task(self.ready(ready_barrier))
             for server_args in server_arg_tuples:
-                server_task_group.create_task(self.serve_connection(*server_args))
-            systemd.daemon.notify("READY=1")
+                server_task_group.create_task(
+                    self.serve_connection(*server_args, ready_barrier)
+                )
+
+    async def ready(self, ready_barrier):
+        """Notify systemd when all connection servers are ready
+
+        Parameters
+        ----------
+        ready_barrier: asyncio.Barrier
+            Barrier to count number of ready connection servers
+        """
+        await ready_barrier.wait()
+        systemd.daemon.notify("READY=1")
 
     def exit(self, signame, loop):
         """Gracefully exits in response to signals
@@ -147,7 +162,7 @@ class QrexecConnect:
         )
 
     async def serve_connection(
-        self, start_server, handle_connection, sock, description
+        self, start_server, handle_connection, sock, description, ready_barrier
     ):
         """Start connection server and serve connections forever
 
@@ -164,9 +179,13 @@ class QrexecConnect:
 
         description: str
             Socket address and qrexec-client-vm arguments for this connection server
+
+        ready_barrier: asyncio.Barrier
+            Barrier to count number of ready connection servers
         """
         server = await start_server(handle_connection, sock=sock)
         self.logger.info(description)
+        asyncio.create_task(ready_barrier.wait())
         async with server:
             await server.serve_forever()
 
