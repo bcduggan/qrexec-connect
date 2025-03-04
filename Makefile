@@ -29,7 +29,7 @@ clean-sums:
 	rm --force SHA512SUMS SHA512SUMS.sign
 
 SHA512SUMS: clean-sums
-	find . -type f -not -path "*/.git/*" -exec sha512sum {} > $@ \;
+	find . -type f -not -path "*/.git/*" -a -not -path "./SHA512SUMS*" -exec sha512sum {} > $@ \;
 
 SHA512SUMS.sign: SHA512SUMS
-	gpg --armor --output $@ --sign $<
+	gpg --armor --detach-sign --output $@ --sign $<
