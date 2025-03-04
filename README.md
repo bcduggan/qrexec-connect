@@ -43,6 +43,34 @@ or writing any systemd unit files:
 user@client:~$ systemd-socket-activate --listen=127.0.0.1:8000 --fdname="web-server qubes.ConnectTCP+8000" ./qrexec-connect
 ```
 
+The systemd journal shows both the sockets it listens on and the addresses that qrexec-connect forwards to RPCs:
+
+```console
+user@client:~$ journalctl --follow
+Mar 04 00:15:01 client systemd[684]: Listening on qrexec-connect-gpg-agent-ssh.socket.
+Mar 04 00:15:01 client systemd[684]: Listening on qrexec-connect-httpd.socket.
+Mar 04 00:15:01 client systemd[684]: Listening on qrexec-connect-httpd-ipv6.socket.
+Mar 04 00:15:01 client systemd[684]: Listening on qrexec-connect-container.socket.
+Mar 04 00:15:05 client systemd[684]: Starting qrexec-connect.service - systemd-native qrexec-client-vm service...
+Mar 04 00:15:05 client qrexec-connect[10412]: /run/user/1000/gnupg/S.gpg-agent.ssh (service qubes.GPGAgentSSH)
+Mar 04 00:15:05 client qrexec-connect[10412]: 127.0.0.1:8000 (service qubes.ConnectTCP+8000)
+Mar 04 00:15:05 client qrexec-connect[10412]: @container (service qubes.ConnectContainer)
+Mar 04 00:15:05 client qrexec-connect[10412]: [::1]:8000 (service qubes.ConnectTCP+8000)
+Mar 04 00:15:05 client systemd[684]: Started qrexec-connect.service - systemd-native qrexec-client-vm service.
+```
+
+Use systemctl to show the sockets each unit starts:
+
+```console
+user@client:~/repos/qrexec-connect$ systemctl --user list-sockets
+LISTEN                                   UNIT                                  ACTIVATES                   
+/run/user/1000/gnupg/S.gpg-agent.ssh     qrexec-connect-gpg-agent-ssh.socket   qrexec-connect.service
+127.0.0.1:8000                           qrexec-connect-httpd.socket           qrexec-connect.service
+@container                               qrexec-connect-container.socket       qrexec-connect.service
+[::1]:8000                               qrexec-connect-httpd-ipv6.socket      qrexec-connect.service
+...
+```
+
 See [Examples](#examples) to complete the setup.
 
 ## Motivation
