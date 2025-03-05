@@ -13,6 +13,19 @@ import systemd.daemon
 import argparse
 import shlex
 
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+# LSB exit codes
+# https://refspecs.linuxbase.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/iniscrptact.html
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#Process%20Exit%20Codes
+EXIT_INVALIDARGUMENT = 2
+EXIT_NOTIMPLEMENTED = 3
+EXIT_NOPERMISSION = 4
+EXIT_NOTINSTALLED = 5
+EXIT_NOTCONFIGURED = 6
+EXIT_NOTRUNNING = 7
+
 
 class QrexecConnect:
     """A systemd-native qrexec-client-vm service
@@ -21,22 +34,9 @@ class QrexecConnect:
     ----------
     exit_signals: tuple[str]
         A list of signal names that should stop the application
-
-    NO_LISTEN_FDS: int
-        Return code when not started as a systemd service
-
-    UNSUPPORTED_ADDRESS_FAMILY: int
-        Return code when socket fd is not one of IPv4, IPv6, or Unix
-
-    FILEDESCRIPTORNAME_ERROR: int
-        Return code when FileDescriptorName value is not exactly two arguments
     """
 
     exit_signals = ("SIGINT", "SIGTERM")
-
-    NO_LISTEN_FDS = 125
-    UNSUPPORTED_ADDRESS_FAMILY = 126
-    FILEDESCRIPTORNAME_ERROR = 127
 
     def __init__(self):
         """Parses arguments, sets up logging, and tests for listening fds provided by systemd"""
@@ -65,7 +65,7 @@ class QrexecConnect:
 
         if not self.fds_with_names:
             self.startup_error("No listen FDs found")
-            exit(self.NO_LISTEN_FDS)
+            exit(EXIT_NOTCONFIGURED)
 
     async def run(self):
         """Run connection servers"""
@@ -118,7 +118,7 @@ class QrexecConnect:
         """
         systemd.daemon.notify("STOPPING=1")
         loop.stop
-        exit(0)
+        exit(EXIT_SUCCESS)
 
     def startup_error(self, message):
         """Log startup errors to journal and stderr if it's a TTY
@@ -165,7 +165,7 @@ class QrexecConnect:
             start_server = asyncio.start_unix_server
         else:
             self.startup_error(f"Unsupported address family: {sock.family}")
-            exit(self.UNSUPPORTED_ADDRESS_FAMILY)
+            exit(EXIT_NOTIMPLEMENTED)
 
         server = await start_server(handle_connection, sock=sock, start_serving=False)
 
@@ -246,7 +246,7 @@ class QrexecConnect:
             self.startup_error(
                 f"FileDescriptorName takes 2 arguments but {len(argv)} {was_or_were} given: '{fd_name}'",
             )
-            exit(self.FILEDESCRIPTORNAME_ERROR)
+            exit(EXIT_INVALIDARGUMENT)
 
         return argv
 
