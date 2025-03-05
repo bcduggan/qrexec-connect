@@ -271,18 +271,26 @@ class QrexecConnect:
 
         self.logger.debug(f"Starting ({fd_name})...")
 
-        qrexec_client = await asyncio.create_subprocess_exec(
-            "/usr/bin/qrexec-client-vm",
-            f"--buffer-size={self.buffer_size}",
-            "--no-filter-escape-chars-stdout",
-            "--filter-escape-chars-stderr",
-            "--",
-            target_qube,
-            rpc_service,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        try:
+            qrexec_client = await asyncio.create_subprocess_exec(
+                "/usr/bin/qrexec-client-vm",
+                f"--buffer-size={self.buffer_size}",
+                "--no-filter-escape-chars-stdout",
+                "--filter-escape-chars-stderr",
+                "--",
+                target_qube,
+                rpc_service,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except Exception as exc:
+            self.logger.error(exc)
+            if writer.can_write_eof():
+                writer.write_eof()
+            sink.close()
+            await sink.wait_closed()
+            return
 
         self.logger.debug(f"Started ({fd_name})")
 
