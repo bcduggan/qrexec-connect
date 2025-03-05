@@ -288,8 +288,8 @@ class QrexecConnect:
             self.logger.error(exc)
             if writer.can_write_eof():
                 writer.write_eof()
-            sink.close()
-            await sink.wait_closed()
+            writer.close()
+            await writer.wait_closed()
             return
 
         self.logger.debug(f"Started ({fd_name})")
