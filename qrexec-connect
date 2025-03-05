@@ -80,18 +80,17 @@ class QrexecConnect:
                 qrexec_connect_exit,
             )
 
-        server_arg_tuples = [
-            self.get_server_args(fd, fd_name)
-            for fd, fd_name in self.fds_with_names.items()
+        servers = [
+            await self.get_server(fd, fd_name) for fd, fd_name in self.fds_with_names.items()
         ]
 
-        ready_barrier = asyncio.Barrier(len(server_arg_tuples) + 1)
+        ready_barrier = asyncio.Barrier(len(servers) + 1)
 
         async with asyncio.TaskGroup() as server_task_group:
             server_task_group.create_task(self.ready(ready_barrier))
-            for server_args in server_arg_tuples:
+            for server in servers:
                 server_task_group.create_task(
-                    self.serve_connection(*server_args, ready_barrier)
+                    self.serve_connection(server, ready_barrier)
                 )
 
     async def ready(self, ready_barrier):
@@ -120,7 +119,7 @@ class QrexecConnect:
         loop.stop
         exit(0)
 
-    def get_server_args(self, fd, fd_name):
+    async def get_server(self, fd, fd_name):
         """Start asyncio connection server from systemd socket and qrexec-client-vm arguments
 
         Parameters
@@ -133,8 +132,8 @@ class QrexecConnect:
 
         Returns
         -------
-        tuple[coro, coro, socket.socket, str]
-            Tuple of arguments for self.serve_connection
+        asyncio.Server
+            An asyncio.Server instance
         """
         target_qube, rpc_service = self.parse_fd_name(fd_name)
         sock = socket.socket(fileno=fd)
@@ -154,16 +153,13 @@ class QrexecConnect:
             print(f"Unsupported address family: {sock.family}", file=sys.stderr)
             exit(self.UNSUPPORTED_ADDRESS_FAMILY)
 
-        return (
-            start_server,
-            handle_connection,
-            sock,
-            f"{sock_address} ({shlex.join((target_qube, rpc_service))})",
-        )
+        server = await start_server(handle_connection, sock=sock, start_serving=False)
 
-    async def serve_connection(
-        self, start_server, handle_connection, sock, description, ready_barrier
-    ):
+        self.logger.info(f"{sock_address} ({shlex.join((target_qube, rpc_service))})")
+
+        return server
+
+    async def serve_connection(self, server, ready_barrier):
         """Start connection server and serve connections forever
 
         Parameters
@@ -183,8 +179,6 @@ class QrexecConnect:
         ready_barrier: asyncio.Barrier
             Barrier to count number of ready connection servers
         """
-        server = await start_server(handle_connection, sock=sock, start_serving=False)
-        self.logger.info(description)
         await ready_barrier.wait()
         async with server:
             await server.serve_forever()
@@ -294,7 +288,6 @@ class QrexecConnect:
             stderr = await qrexec_client.stderr.read()
             error_message = stderr.decode("ascii")
             self.logger.error(f"{fd_name}: {error_message}")
-
 
     async def qrexec_pipe(self, source, sink):
         """Pipe data from source stream to sink stream until source reaches EOF
