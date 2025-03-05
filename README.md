@@ -326,13 +326,15 @@ user@nfs-client:~$ systemctl --user daemon-reload
 user@nfs-client:~$ systemctl --user start nfs-documents.mount
 ```
 
-**Service qube**
+**Service qube RPC**
 
 Install the qubes.ConnectNFS RPC:
 
 ```console
 user@nfs-server:~$ sudo make install-connectnfs
 ```
+
+**Service qube NFS server**
 
 Install NFS and enable NFSv4 on the service qube. On Debian:
 
@@ -370,28 +372,62 @@ user@nfs-server:~$ sudo exportfs -s
 /home/user/Documents  127.0.1.2(sync,wdelay,hide,no_subtree_check,sec=sys,ro,insecure,root_squash,no_all_squash)
 ```
 
-The `127.0.1.1.` address doesn't exist by default. IP address definitions are
-distribution-specific. On Debian, create a `/etc/network/interfaces.d/nfs` with
-the following content:
+**Service qube network**
 
+The `127.0.1.1` and `127.0.1.2` addresses don't exist on the loopback interface
+by default. They must be available for the qubes.ConnectNFS RPC to bind to
+them.
+
+Use systemd-networkd to create these addresses on the `lo` interface. This
+configuration relies on files in several directories that don't persist in app qubes. Use Qubes's
+[bind-dirs](https://www.qubes-os.org/doc/bind-dirs/) to make directories like
+`/etc/systemd/network` and `/etc/systemd/system` persistent, if you need to.
+The rest of this section assumes all configuration occurs in a template qube.
+
+Create a network unit file to add IP addresses to the `lo` interface at
+`/etc/systemd/network/80-nfs.network`:
+
+```ini
+[Match]
+Name=lo
+
+[Network]
+Address=127.0.1.1/8
+Address=127.0.1.2/8
 ```
-auto lo
-iface lo inet loopback
 
-iface lo:0 inet static
-    address 127.0.1.1/8
-
-iface lo:1 inet static
-    address 127.0.1.1/8
-```
-
-This configuration uses interface aliasing to avoid errors when shutting down the interface. See [NetworkConfiguration](https://wiki.debian.org/NetworkConfiguration)
-
-Shutdown and startup the lo interface:
+Enable and start systemd-networkd:
 
 ```console
-user@nfs-server:~$ sudo ifdown lo
-user@nfs-server:~$ sudo ifup lo
+user@service:~$ sudo systemctl enable --now systemd-networkd
+Created symlink /etc/systemd/system/dbus-org.freedesktop.network1.service → /lib/systemd/system/systemd-networkd.service.
+Created symlink /etc/systemd/system/multi-user.target.wants/systemd-networkd.service → /lib/systemd/system/systemd-networkd.service.
+Created symlink /etc/systemd/system/sockets.target.wants/systemd-networkd.socket → /lib/systemd/system/systemd-networkd.socket.
+Created symlink /etc/systemd/system/sysinit.target.wants/systemd-network-generator.service → /lib/systemd/system/systemd-network-generator.service.
+Created symlink /etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service → /lib/systemd/system/systemd-networkd-wait-online.service.
+```
+
+Show lo interface IP addresses:
+
+```console
+user@service:~$ networkctl status lo
+● 1: lo
+                     Link File: n/a
+                  Network File: /etc/systemd/network/80-nfs.network
+                         State: carrier (configured)
+                  Online state: offline
+                          Type: loopback
+              Hardware Address: 00:00:00:00:00:00
+                           MTU: 65536
+                         QDisc: noqueue
+  IPv6 Address Generation Mode: none
+      Number of Queues (Tx/Rx): 1/1
+                       Address: 127.0.0.1
+                                127.0.1.1
+                                127.0.1.2
+                                ::1
+             Activation Policy: up
+           Required For Online: yes
 ```
 
 **Policy**
