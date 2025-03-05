@@ -64,7 +64,7 @@ class QrexecConnect:
         self.fds_with_names = systemd.daemon.listen_fds_with_names()
 
         if not self.fds_with_names:
-            print("No listen FDs found", file=sys.stderr)
+            self.startup_error("No listen FDs found")
             exit(self.NO_LISTEN_FDS)
 
     async def run(self):
@@ -81,7 +81,8 @@ class QrexecConnect:
             )
 
         servers = [
-            await self.get_server(fd, fd_name) for fd, fd_name in self.fds_with_names.items()
+            await self.get_server(fd, fd_name)
+            for fd, fd_name in self.fds_with_names.items()
         ]
 
         ready_barrier = asyncio.Barrier(len(servers) + 1)
@@ -119,6 +120,19 @@ class QrexecConnect:
         loop.stop
         exit(0)
 
+    def startup_error(self, message):
+        """Log startup errors to journal and stderr if it's a TTY
+
+        Parameters
+        ----------
+        message: str
+            Error message
+        """
+        if os.isatty(sys.stderr.fileno()):
+            print(message, file=sys.stderr)
+        else:
+            self.logger.critical(message)
+
     async def get_server(self, fd, fd_name):
         """Start asyncio connection server from systemd socket and qrexec-client-vm arguments
 
@@ -150,7 +164,7 @@ class QrexecConnect:
         elif sock.family == socket.AF_UNIX:
             start_server = asyncio.start_unix_server
         else:
-            print(f"Unsupported address family: {sock.family}", file=sys.stderr)
+            self.startup_error(f"Unsupported address family: {sock.family}")
             exit(self.UNSUPPORTED_ADDRESS_FAMILY)
 
         server = await start_server(handle_connection, sock=sock, start_serving=False)
@@ -229,9 +243,8 @@ class QrexecConnect:
 
         if len(argv) != 2:
             was_or_were = "was" if len(argv) == 1 else "were"
-            print(
+            self.startup_error(
                 f"FileDescriptorName takes 2 arguments but {len(argv)} {was_or_were} given: '{fd_name}'",
-                file=sys.stderr,
             )
             exit(self.FILEDESCRIPTORNAME_ERROR)
 
